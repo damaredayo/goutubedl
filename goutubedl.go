@@ -482,6 +482,75 @@ func (result Result) Download(ctx context.Context, filter string) (*DownloadResu
 	return dr, nil
 }
 
+// Download func but returns AAC.
+func (result Result) DownloadAAC(ctx context.Context, filter string) (*DownloadResult, error) {
+	debugLog := result.Options.DebugLog
+
+	if result.Info.Type == "playlist" || result.Info.Type == "multi_video" {
+		return nil, fmt.Errorf("can't download a playlist")
+	}
+
+	tempPath, tempErr := ioutil.TempDir("", "ydls")
+	if tempErr != nil {
+		return nil, tempErr
+	}
+	jsonTempPath := path.Join(tempPath, "info.json")
+	if err := ioutil.WriteFile(jsonTempPath, result.RawJSON, 0600); err != nil {
+		os.RemoveAll(tempPath)
+		return nil, err
+	}
+
+	dr := &DownloadResult{
+		waitCh: make(chan struct{}),
+	}
+
+	cmd := exec.CommandContext(
+		ctx,
+		Path,
+		"--extract-audio",
+		"--audio-format", "m4a",
+		"--audio-quality", "0",
+		"--no-call-home",
+		"--no-cache-dir",
+		"--ignore-errors",
+		"--newline",
+		"--restrict-filenames",
+		"--load-info", jsonTempPath,
+		"-o", "-",
+	)
+	// don't need to specify if direct as there is only one
+	// also seems to be issues when using filter with generic extractor
+	if !result.Info.Direct {
+		cmd.Args = append(cmd.Args, "-f", filter)
+	}
+
+	cmd.Dir = tempPath
+	var w io.WriteCloser
+	dr.reader, w = io.Pipe()
+
+	stderrWriter := ioutil.Discard
+	if result.Options.StderrFn != nil {
+		stderrWriter = result.Options.StderrFn(cmd)
+	}
+	cmd.Stdout = w
+	cmd.Stderr = stderrWriter
+
+	debugLog.Print("cmd", " ", cmd.Args)
+	if err := cmd.Start(); err != nil {
+		os.RemoveAll(tempPath)
+		return nil, err
+	}
+
+	go func() {
+		cmd.Wait()
+		w.Close()
+		os.RemoveAll(tempPath)
+		close(dr.waitCh)
+	}()
+
+	return dr, nil
+}
+
 func (dr *DownloadResult) Read(p []byte) (n int, err error) {
 	return dr.reader.Read(p)
 }
