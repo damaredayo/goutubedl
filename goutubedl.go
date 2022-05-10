@@ -483,7 +483,7 @@ func (result Result) Download(ctx context.Context, filter string) (*DownloadResu
 }
 
 // Download func but returns AAC.
-func (result Result) DownloadAAC(ctx context.Context, filter string) (*DownloadResult, error) {
+func (result Result) DownloadAAC(ctx context.Context, filter string, url string) (*DownloadResult, error) {
 	debugLog := result.Options.DebugLog
 
 	if result.Info.Type == "playlist" || result.Info.Type == "multi_video" {
@@ -507,7 +507,7 @@ func (result Result) DownloadAAC(ctx context.Context, filter string) (*DownloadR
 	cmd := exec.CommandContext(
 		ctx,
 		Path,
-		"--extract-audio",
+		"-f", filter,
 		"--audio-format", "m4a",
 		"--audio-quality", "0",
 		"--no-call-home",
@@ -517,7 +517,9 @@ func (result Result) DownloadAAC(ctx context.Context, filter string) (*DownloadR
 		"--restrict-filenames",
 		"--load-info", jsonTempPath,
 		"-o", "-",
+		url,
 	)
+
 	// don't need to specify if direct as there is only one
 	// also seems to be issues when using filter with generic extractor
 	if !result.Info.Direct {
